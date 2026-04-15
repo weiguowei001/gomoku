@@ -5,6 +5,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
+#include <QTimer>
 #include <QWidget>
 
 #include "ai.h"
@@ -53,6 +54,7 @@ protected:
         if (!game_.makeMove(row, col)) {
             return;
         }
+        playMoveSound();
         update();
         if (showGameResultIfFinished()) {
             return;
@@ -151,14 +153,17 @@ private:
 
     bool showGameResultIfFinished() {
         if (game_.state() == GameState::BlackWin) {
+            playResultSound(/*isWin=*/true);
             QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("你（黑棋）获胜！"));
             return true;
         }
         if (game_.state() == GameState::WhiteWin) {
+            playResultSound(/*isWin=*/false);
             QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("AI（白棋）获胜！"));
             return true;
         }
         if (game_.state() == GameState::Draw) {
+            playDrawSound();
             QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("平局！"));
             return true;
         }
@@ -180,8 +185,28 @@ private:
             return;
         }
 
+        playMoveSound();
         update();
         showGameResultIfFinished();
+    }
+
+    void playMoveSound() const {
+        QApplication::beep();
+    }
+
+    void playResultSound(bool isWin) const {
+        QApplication::beep();
+        // 用不同的节奏区分胜负结果，不引入额外音频资源。
+        QTimer::singleShot(isWin ? 120 : 300, this, []() {
+            QApplication::beep();
+        });
+    }
+
+    void playDrawSound() const {
+        QApplication::beep();
+        QTimer::singleShot(220, this, []() {
+            QApplication::beep();
+        });
     }
 
 private:
