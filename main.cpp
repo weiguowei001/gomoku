@@ -1,11 +1,20 @@
 #include <cmath>
+#include <cstdint>
 #include <QApplication>
+#include <QByteArray>
+#include <QDataStream>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
+#include <QSoundEffect>
+#include <QStandardPaths>
 #include <QTimer>
+#include <QUrl>
 #include <QWidget>
 
 #include "ai.h"
@@ -18,12 +27,88 @@ constexpr int kPieceRadius = 15;
 
 constexpr int kWindowSize = kMargin * 2 + kCellSize * (kBoardSize - 1);
 
+namespace {
+
+QString moveSoundFilePath() {
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
+           QStringLiteral("/gomoku_move.wav");
+}
+
+QByteArray buildMoveSoundWavData() {
+    constexpr int kSampleRate = 44100;
+    constexpr int kDurationMs = 45;
+    constexpr int kNumChannels = 1;
+    constexpr int kBitsPerSample = 16;
+    constexpr int kByteRate = kSampleRate * kNumChannels * (kBitsPerSample / 8);
+    constexpr int kBlockAlign = kNumChannels * (kBitsPerSample / 8);
+    constexpr int kNumSamples = kSampleRate * kDurationMs / 1000;
+    const int dataSize = kNumSamples * kBlockAlign;
+
+    QByteArray pcmData;
+    pcmData.resize(dataSize);
+    auto* sampleBytes = reinterpret_cast<std::int16_t*>(pcmData.data());
+
+    constexpr double kPi = 3.14159265358979323846;
+    for (int i = 0; i < kNumSamples; ++i) {
+        const double t = static_cast<double>(i) / static_cast<double>(kSampleRate);
+        const double envelope = std::exp(-70.0 * t);
+        const double tone = std::sin(2.0 * kPi * 2600.0 * t) + 0.45 * std::sin(2.0 * kPi * 4100.0 * t);
+        const double value = tone * envelope;
+        sampleBytes[i] = static_cast<std::int16_t>(value * 12000.0);
+    }
+
+    QByteArray wav;
+    wav.reserve(44 + dataSize);
+    QDataStream stream(&wav, QIODevice::WriteOnly);
+    stream.setByteOrder(QDataStream::LittleEndian);
+
+    stream.writeRawData("RIFF", 4);
+    stream << static_cast<quint32>(36 + dataSize);
+    stream.writeRawData("WAVE", 4);
+    stream.writeRawData("fmt ", 4);
+    stream << static_cast<quint32>(16);  // PCM chunk size
+    stream << static_cast<quint16>(1);   // Audio format PCM
+    stream << static_cast<quint16>(kNumChannels);
+    stream << static_cast<quint32>(kSampleRate);
+    stream << static_cast<quint32>(kByteRate);
+    stream << static_cast<quint16>(kBlockAlign);
+    stream << static_cast<quint16>(kBitsPerSample);
+    stream.writeRawData("data", 4);
+    stream << static_cast<quint32>(dataSize);
+    stream.writeRawData(pcmData.constData(), dataSize);
+
+    return wav;
+}
+
+bool writeMoveSoundFileIfNeeded(const QString& filePath) {
+    const QFileInfo info(filePath);
+    if (!QDir().mkpath(info.absolutePath())) {
+        return false;
+    }
+
+    if (info.exists() && info.size() > 0) {
+        return true;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    const QByteArray wavData = buildMoveSoundWavData();
+    const auto written = file.write(wavData);
+    file.close();
+    return written == wavData.size();
+}
+
+}  // namespace
+
 class GomokuWidget : public QWidget {
 public:
     GomokuWidget() {
         setFixedSize(kWindowSize, kWindowSize);
         setWindowTitle(QStringLiteral("五子棋（人机对战）"));
         selectDifficulty();
+        initMoveSound();
     }
 
 protected:
@@ -190,11 +275,26 @@ private:
         showGameResultIfFinished();
     }
 
-    void playMoveSound() const {
-        QApplication::beep();
+    void initMoveSound() {
+        const QString soundPath = moveSoundFilePath();
+        if (!writeMoveSoundFileIfNeeded(soundPath)) {
+            return;
+        }
+        moveSound_.setSource(QUrl::fromLocalFile(soundPath));
+        moveSound_.setLoopCount(1);
+        moveSound_.setVolume(0.7F);
     }
 
-    void playResultSound(bool isWin) const {
+    void playMoveSound() {
+        if (moveSound_.source().isEmpty()) {
+            QApplication::beep();
+            return;
+        }
+        moveSound_.stop();
+        moveSound_.play();
+    }
+
+    void playResultSound(bool isWin) {
         QApplication::beep();
         // 用不同的节奏区分胜负结果，不引入额外音频资源。
         QTimer::singleShot(isWin ? 120 : 300, this, []() {
@@ -202,7 +302,7 @@ private:
         });
     }
 
-    void playDrawSound() const {
+    void playDrawSound() {
         QApplication::beep();
         QTimer::singleShot(220, this, []() {
             QApplication::beep();
@@ -212,6 +312,7 @@ private:
 private:
     Game game_;
     AiPlayer ai_;
+    QSoundEffect moveSound_;
 };
 
 int main(int argc, char* argv[]) {
