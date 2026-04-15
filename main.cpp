@@ -1,5 +1,6 @@
 #include <cmath>
 #include <QApplication>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -21,6 +22,7 @@ public:
     GomokuWidget() {
         setFixedSize(kWindowSize, kWindowSize);
         setWindowTitle(QStringLiteral("五子棋（人机对战）"));
+        selectDifficulty();
     }
 
 protected:
@@ -60,6 +62,36 @@ protected:
     }
 
 private:
+    void selectDifficulty() {
+        const QStringList items = {
+            QStringLiteral("简单"),
+            QStringLiteral("普通"),
+            QStringLiteral("困难"),
+        };
+        bool ok = false;
+        const QString selected = QInputDialog::getItem(
+            this,
+            QStringLiteral("选择难度"),
+            QStringLiteral("请选择 AI 难度："),
+            items,
+            1,
+            false,
+            &ok);
+
+        if (!ok || selected == items[1]) {
+            ai_.setDifficulty(AiDifficulty::Normal);
+            setWindowTitle(QStringLiteral("五子棋（人机对战 - 普通）"));
+            return;
+        }
+        if (selected == items[0]) {
+            ai_.setDifficulty(AiDifficulty::Easy);
+            setWindowTitle(QStringLiteral("五子棋（人机对战 - 简单）"));
+            return;
+        }
+        ai_.setDifficulty(AiDifficulty::Hard);
+        setWindowTitle(QStringLiteral("五子棋（人机对战 - 困难）"));
+    }
+
     void drawBoard(QPainter& painter) {
         QPen linePen(Qt::black);
         linePen.setWidth(2);

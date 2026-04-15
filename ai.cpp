@@ -70,9 +70,30 @@ int evaluatePosition(const Board& board, int row, int col, Piece aiPiece, Piece 
     return attackScore + defenseScore * 12 / 10 + centerBonus * 2;
 }
 
+int bestPositionScore(const Board& board, Piece aiPiece, Piece opponentPiece) {
+    int best = std::numeric_limits<int>::min();
+    for (int row = 0; row < Board::kSize; ++row) {
+        for (int col = 0; col < Board::kSize; ++col) {
+            if (!board.isEmpty(row, col)) {
+                continue;
+            }
+            best = std::max(best, evaluatePosition(board, row, col, aiPiece, opponentPiece));
+        }
+    }
+    return best;
+}
+
 }  // namespace
 
 AiPlayer::AiPlayer() : rng_(std::random_device{}()) {}
+
+void AiPlayer::setDifficulty(AiDifficulty difficulty) {
+    difficulty_ = difficulty;
+}
+
+AiDifficulty AiPlayer::difficulty() const {
+    return difficulty_;
+}
 
 std::optional<std::pair<int, int>> AiPlayer::chooseMove(const Board& board,
                                                         Piece aiPiece,
@@ -87,6 +108,12 @@ std::optional<std::pair<int, int>> AiPlayer::chooseMove(const Board& board,
         return blockMove;
     }
 
+    if (difficulty_ == AiDifficulty::Easy) {
+        return chooseBestScoredMove(board, aiPiece, opponentPiece);
+    }
+    if (difficulty_ == AiDifficulty::Hard) {
+        return chooseHardMove(board, aiPiece, opponentPiece);
+    }
     return chooseBestScoredMove(board, aiPiece, opponentPiece);
 }
 
@@ -127,6 +154,60 @@ std::optional<std::pair<int, int>> AiPlayer::chooseBestScoredMove(const Board& b
         }
     }
 
+    std::uniform_int_distribution<int> dist(0, static_cast<int>(bestMoves.size()) - 1);
+    const auto picked = bestMoves[dist(rng_)];
+
+    if (difficulty_ == AiDifficulty::Easy) {
+        // Easy mode: occasionally makes a weaker random move to feel more beatable.
+        std::uniform_int_distribution<int> chance(1, 100);
+        if (chance(rng_) <= 35) {
+            std::uniform_int_distribution<int> any(0, static_cast<int>(emptyCells.size()) - 1);
+            return emptyCells[any(rng_)];
+        }
+    }
+
+    return picked;
+}
+
+std::optional<std::pair<int, int>> AiPlayer::chooseHardMove(const Board& board,
+                                                            Piece aiPiece,
+                                                            Piece opponentPiece) {
+    const auto emptyCells = collectEmptyCells(board);
+    if (emptyCells.empty()) {
+        return std::nullopt;
+    }
+
+    int bestScore = std::numeric_limits<int>::min();
+    std::vector<std::pair<int, int>> bestMoves;
+    bestMoves.reserve(emptyCells.size());
+
+    for (const auto& [row, col] : emptyCells) {
+        Board simulated = board;
+        if (!simulated.placePiece(row, col, aiPiece)) {
+            continue;
+        }
+
+        // Base score: immediate board quality for AI.
+        int score = evaluatePosition(board, row, col, aiPiece, opponentPiece);
+
+        // Penalize strong opponent reply in next turn (1-ply lookahead).
+        const int opponentReply = bestPositionScore(simulated, opponentPiece, aiPiece);
+        if (opponentReply != std::numeric_limits<int>::min()) {
+            score -= opponentReply * 7 / 10;
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestMoves.clear();
+            bestMoves.emplace_back(row, col);
+        } else if (score == bestScore) {
+            bestMoves.emplace_back(row, col);
+        }
+    }
+
+    if (bestMoves.empty()) {
+        return std::nullopt;
+    }
     std::uniform_int_distribution<int> dist(0, static_cast<int>(bestMoves.size()) - 1);
     return bestMoves[dist(rng_)];
 }
