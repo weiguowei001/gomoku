@@ -8,11 +8,11 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 COMPONENTS Widgets QUIET)
+find_package(Qt6 COMPONENTS Widgets Multimedia QUIET)
 if(Qt6_FOUND)
     set(QT_PACKAGE Qt6)
 else()
-    find_package(Qt5 REQUIRED COMPONENTS Widgets)
+    find_package(Qt5 REQUIRED COMPONENTS Widgets Multimedia)
     set(QT_PACKAGE Qt5)
 endif()
 
@@ -23,4 +23,7 @@ add_executable(gomoku_qt
     main.cpp
 )
 
-target_link_libraries(gomoku_qt PRIVATE ${QT_PACKAGE}::Widgets)
+target_link_libraries(gomoku_qt PRIVATE
+    ${QT_PACKAGE}::Widgets
+    ${QT_PACKAGE}::Multimedia
+)
