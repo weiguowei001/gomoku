@@ -6,6 +6,7 @@
 #include <QPen>
 #include <QWidget>
 
+#include "ai.h"
 #include "game.h"
 
 constexpr int kBoardSize = 15;
@@ -19,7 +20,7 @@ class GomokuWidget : public QWidget {
 public:
     GomokuWidget() {
         setFixedSize(kWindowSize, kWindowSize);
-        setWindowTitle(QStringLiteral("五子棋"));
+        setWindowTitle(QStringLiteral("五子棋（人机对战）"));
     }
 
 protected:
@@ -36,6 +37,9 @@ protected:
         if (game_.isGameOver() || event->button() != Qt::LeftButton) {
             return;
         }
+        if (game_.currentPlayer() != Piece::Black) {
+            return;
+        }
 
         const QPoint pos = event->pos();
         int row = 0;
@@ -48,18 +52,11 @@ protected:
             return;
         }
         update();
+        if (showGameResultIfFinished()) {
+            return;
+        }
 
-        if (game_.state() == GameState::BlackWin) {
-            QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("黑棋获胜！"));
-            return;
-        }
-        if (game_.state() == GameState::WhiteWin) {
-            QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("白棋获胜！"));
-            return;
-        }
-        if (game_.state() == GameState::Draw) {
-            QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("平局！"));
-        }        
+        tryAiMove();
     }
 
 private:
@@ -120,8 +117,44 @@ private:
         return true;
     }
 
+    bool showGameResultIfFinished() {
+        if (game_.state() == GameState::BlackWin) {
+            QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("你（黑棋）获胜！"));
+            return true;
+        }
+        if (game_.state() == GameState::WhiteWin) {
+            QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("AI（白棋）获胜！"));
+            return true;
+        }
+        if (game_.state() == GameState::Draw) {
+            QMessageBox::information(this, QStringLiteral("游戏结束"), QStringLiteral("平局！"));
+            return true;
+        }
+        return false;
+    }
+
+    void tryAiMove() {
+        if (game_.isGameOver() || game_.currentPlayer() != Piece::White) {
+            return;
+        }
+
+        const auto move = ai_.chooseMove(game_.board(), Piece::White, Piece::Black);
+        if (!move.has_value()) {
+            return;
+        }
+
+        const auto [row, col] = *move;
+        if (!game_.makeMove(row, col)) {
+            return;
+        }
+
+        update();
+        showGameResultIfFinished();
+    }
+
 private:
     Game game_;
+    AiPlayer ai_;
 };
 
 int main(int argc, char* argv[]) {
