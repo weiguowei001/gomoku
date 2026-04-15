@@ -17,6 +17,7 @@ else()
 endif()
 
 add_executable(gomoku_qt
+    ai.cpp
     board.cpp
     game.cpp
     main.cpp
